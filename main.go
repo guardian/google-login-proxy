@@ -17,7 +17,7 @@ import (
 )
 
 // For info on JWT see: https://tools.ietf.org/html/rfc7519
-// For info on oauth see: ..
+// For info on oauth see: https://tools.ietf.org/html/rfc6749
 
 type gPlusResp struct {
 	Email         string `json:"email"`
