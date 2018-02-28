@@ -88,9 +88,9 @@ func handleGoogleLogin(w http.ResponseWriter, r *http.Request) {
 	parts := strings.SplitAfter(email, "@")
 	domain := parts[len(parts)-1]
 
-	if domain != "guardian.co.uk" {
+	if domain != "guardian.co.uk" || !userInfo.EmailVerified {
 		w.WriteHeader(http.StatusUnauthorized)
-		w.Write([]byte("Unauthorised (unsupported email domain)"))
+		w.Write([]byte("Unauthorised (unsupported email domain, or email not verified)"))
 		return
 	}
 
