@@ -17,6 +17,11 @@ format. HMAC is used to encrypt the token.
 The cookie is set to expire in 30 days if the user has not closed
 their browser session before then.
 
+See:
+
+* https://tools.ietf.org/html/rfc6749 (oauth2)
+* https://tools.ietf.org/html/rfc7519 (JWT)
+
 ## TODOs
 
 * fix 'state' variable
