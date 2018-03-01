@@ -37,7 +37,7 @@ Then run or build as you like. E.g.
 
 ## TODOs
 
-* [x] add some tests around security behaviour!
-* [] fix 'state' variable
-* [] redirect to kibana home after login
-* [] make things configurable / cli options/env
+- [x] add some tests around security behaviour!
+- [ ] fix 'state' variable
+- [ ] redirect to kibana home after login
+- [ ] make things configurable / cli options/env
