@@ -37,7 +37,7 @@ Then run or build as you like. E.g.
 
 ## TODOs
 
-* fix 'state' variable
-* preserve initial path after login (currently returns you to root)
-* add some tests around security behaviour!
-* make things configurable / cli options/env
+* [x] add some tests around security behaviour!
+* [] fix 'state' variable
+* [] redirect to kibana home after login
+* [] make things configurable / cli options/env

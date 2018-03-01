@@ -87,14 +87,14 @@ func proxyWithAuth(target *url.URL) func(w http.ResponseWriter, r *http.Request)
 
 	return func(w http.ResponseWriter, r *http.Request) {
 		cookies := r.Cookies()
-		var session string
+		var token string
 		for _, c := range cookies {
 			if c.Name == "session" {
-				session = c.Value
+				token = c.Value
 			}
 		}
 
-		_, err := getEmailFromToken(session, []byte("foo"))
+		_, err := verifyToken(token, []byte("foo"), "guardian.co.uk")
 		if err != nil {
 			state := "foo" // TODO randomise and confirm other side (CSRF)
 			http.Redirect(w, r, oauthConf.AuthCodeURL(state), http.StatusFound)
@@ -125,8 +125,7 @@ func handleGoogleLogin(w http.ResponseWriter, r *http.Request) {
 	err = json.Unmarshal(body, &userInfo)
 
 	email := userInfo.Email
-	parts := strings.SplitAfter(email, "@")
-	domain := parts[len(parts)-1]
+	domain := domainFromEmail(email)
 
 	if domain != "guardian.co.uk" || !userInfo.EmailVerified {
 		w.WriteHeader(http.StatusUnauthorized)
@@ -135,7 +134,7 @@ func handleGoogleLogin(w http.ResponseWriter, r *http.Request) {
 	}
 
 	hmacSecret := []byte("foo")
-	sessionToken, err := newSessionToken(email, hmacSecret)
+	sessionToken, err := newSessionToken(email, jwt.SigningMethodHS256, hmacSecret)
 
 	session := http.Cookie{
 		Name:     "session",
@@ -150,35 +149,43 @@ func handleGoogleLogin(w http.ResponseWriter, r *http.Request) {
 	http.Redirect(w, r, "/", http.StatusFound)
 }
 
-func newSessionToken(email string, hmacSecret []byte) (string, error) {
-	token := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
+func newSessionToken(email string, signingMethod jwt.SigningMethod, secret []byte) (string, error) {
+	token := jwt.NewWithClaims(signingMethod, jwt.MapClaims{
 		"email": email,
 		"exp":   time.Now().AddDate(0, 0, 30).Unix(),
 	})
 
-	return token.SignedString(hmacSecret)
+	return token.SignedString(secret)
 }
 
-func getEmailFromToken(token string, hmacSecret []byte) (string, error) {
+func verifyToken(token string, hmacSecret []byte, expectedDomain string) (string, error) {
 	userToken, err := jwt.Parse(token, func(token *jwt.Token) (interface{}, error) {
-		if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
-			return nil, fmt.Errorf("Unexpected signing method: %v", token.Header["alg"])
+		method, ok := token.Method.(*jwt.SigningMethodHMAC)
+		if !ok || method.Alg() != "HS256" {
+			return nil, fmt.Errorf("unexpected signing method")
 		}
 
 		return hmacSecret, nil
 	})
 	if err != nil {
-		return "", fmt.Errorf("Unable to parse token: %s", err.Error())
+		return "", fmt.Errorf("Token invalid (%s)", err.Error())
 	}
 
 	claims, ok := userToken.Claims.(jwt.MapClaims)
 	if !ok {
-		return "", errors.New("Unable to parse jwt claims")
+		return "", errors.New("Token invalid (unable to parse jwt claims)")
 	}
 
-	if !userToken.Valid {
-		return "", errors.New("Token is not valid (perhaps it has expired?)")
+	email := claims["email"].(string)
+
+	if domain := domainFromEmail(email); domain != expectedDomain {
+		return "", errors.New("Token invalid (domain did not match)")
 	}
 
-	return claims["email"].(string), nil
+	return email, nil
+}
+
+func domainFromEmail(email string) string {
+	parts := strings.SplitAfter(email, "@")
+	return parts[len(parts)-1]
 }
