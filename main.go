@@ -3,11 +3,13 @@ package main
 import (
 	"encoding/json"
 	"errors"
+	"flag"
 	"fmt"
 	"github.com/dgrijalva/jwt-go"
 	"golang.org/x/oauth2"
 	"golang.org/x/oauth2/google"
 	"io/ioutil"
+	"log"
 	"net/http"
 	"net/http/httputil"
 	"net/url"
@@ -23,7 +25,7 @@ type gPlusResp struct {
 
 var (
 	oauthConf = &oauth2.Config{
-		RedirectURL:  "http://localhost:3000/oauth2callback",
+		RedirectURL:  "",
 		ClientID:     os.Getenv("GOOGLE_CLIENT_ID"),
 		ClientSecret: os.Getenv("GOOGLE_CLIENT_SECRET"),
 		Scopes: []string{"https://www.googleapis.com/auth/userinfo.profile",
@@ -35,32 +37,73 @@ var (
 )
 
 func main() {
-	http.HandleFunc("/", proxyWithAuth)
+	var port = flag.Int("port", 80, "port to listen on")
+	var target = flag.String("target", "", "target host and port, e.g. 'http://localhost:3000'")
+	var host = flag.String("host", "http://localhost", "hostname, used for oauth callback")
+	var help = flag.Bool("help", false, "Get program help")
+
+	flag.Parse()
+
+	if *help {
+		flag.PrintDefaults()
+		os.Exit(0)
+	}
+
+	if *target == "" {
+		log.Println("Must provide target argument")
+		flag.PrintDefaults()
+		log.Fatal()
+	}
+
+	if oauthConf.ClientID == "" || oauthConf.ClientSecret == "" {
+		log.Fatal("Must provide google client ID and client secret as env vars (GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET")
+	}
+
+	addr := fmt.Sprintf(":%d", *port)
+
+	targetUrl, err := url.Parse(*target)
+	if err != nil {
+		log.Fatalf("Invalid target host (%s)", *target)
+	}
+
+	hostUrl, err := url.Parse(*host)
+	if err != nil {
+		log.Fatalf("Invalid host (%s)", *host)
+	}
+
+	if *port == 80 {
+		oauthConf.RedirectURL = fmt.Sprintf("%s/oauth2callback", hostUrl.String())
+	} else {
+		oauthConf.RedirectURL = fmt.Sprintf("%s:%d/oauth2callback", hostUrl.String(), *port)
+	}
+
+	http.HandleFunc("/", proxyWithAuth(targetUrl))
 	http.HandleFunc("/oauth2callback", handleGoogleLogin)
-	fmt.Println(http.ListenAndServe(":3000", nil))
+	fmt.Println(http.ListenAndServe(addr, nil))
 }
 
-func proxyWithAuth(w http.ResponseWriter, r *http.Request) {
-	g, _ := url.Parse("https://www.theguardian.com")
-	proxy := httputil.NewSingleHostReverseProxy(g)
+func proxyWithAuth(target *url.URL) func(w http.ResponseWriter, r *http.Request) {
+	proxy := httputil.NewSingleHostReverseProxy(target)
 
-	cookies := r.Cookies()
-	var session string
-	for _, c := range cookies {
-		if c.Name == "session" {
-			session = c.Value
+	return func(w http.ResponseWriter, r *http.Request) {
+		cookies := r.Cookies()
+		var session string
+		for _, c := range cookies {
+			if c.Name == "session" {
+				session = c.Value
+			}
 		}
-	}
 
-	_, err := getEmailFromToken(session, []byte("foo"))
-	if err != nil {
-		state := "foo" // TODO randomise and confirm other side (CSRF)
-		http.Redirect(w, r, oauthConf.AuthCodeURL(state), http.StatusFound)
-		return
-	}
+		_, err := getEmailFromToken(session, []byte("foo"))
+		if err != nil {
+			state := "foo" // TODO randomise and confirm other side (CSRF)
+			http.Redirect(w, r, oauthConf.AuthCodeURL(state), http.StatusFound)
+			return
+		}
 
-	r.Host = r.URL.Host // TODO remind myself why this works
-	proxy.ServeHTTP(w, r)
+		r.Host = r.URL.Host // TODO remind myself why this works
+		proxy.ServeHTTP(w, r)
+	}
 }
 
 func handleGoogleLogin(w http.ResponseWriter, r *http.Request) {
@@ -97,7 +140,7 @@ func handleGoogleLogin(w http.ResponseWriter, r *http.Request) {
 	session := http.Cookie{
 		Name:     "session",
 		Value:    sessionToken,
-		Domain:   "localhost",
+		Domain:   strings.Split(r.Host, ":")[0], // drop port if present
 		Path:     "/",
 		HttpOnly: true,
 		Secure:   false, // TODO make secure when on https

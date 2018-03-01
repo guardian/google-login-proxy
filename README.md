@@ -22,6 +22,19 @@ See:
 * https://tools.ietf.org/html/rfc6749 (oauth2)
 * https://tools.ietf.org/html/rfc7519 (JWT)
 
+## Building
+
+If you want to work on the code itself, download the sources:
+
+    $ go get github.com/guardian/google-login-proxy/...
+
+(Requires a working go installation.)
+
+Then run or build as you like. E.g.
+
+    $ go run main.go
+    $ GOARCH=amd64 GOOS=linux go build . // build for linux
+
 ## TODOs
 
 * fix 'state' variable
